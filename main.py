@@ -1,54 +1,51 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
+import time
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+ticker = yf.Ticker("^NSEI")
+last_candle_fetch = 0
+cached_candles = []
 
 @app.get("/")
-def home():
+def root():
+    return {"status": "running"}
+
+@app.get("/nifty/price")
+def nifty_price():
+    info = ticker.fast_info
+    price = info["last_price"]
+    prev = info["previous_close"]
+
     return {
-        "service": "NIFTY 50 Live API",
-        "status": "running",
-        "endpoint": "/nifty"
+        "price": round(price, 2),
+        "change": round(price - prev, 2),
+        "percent": round(((price - prev) / prev) * 100, 2)
     }
 
-@app.get("/nifty")
-def nifty():
-    try:
-        ticker = yf.Ticker("^NSEI")
+@app.get("/nifty/candles")
+def nifty_candles():
+    global last_candle_fetch, cached_candles
 
-        # Use history instead of fast_info (more reliable)
-        hist = ticker.history(period="2d", interval="1d")
+    now = time.time()
 
-        if hist.empty or len(hist) < 2:
-            return {
-                "error": "Insufficient data",
-                "source": "yfinance"
-            }
+    # Cache candles for 60 seconds
+    if now - last_candle_fetch < 60 and cached_candles:
+        return {"candles": cached_candles}
 
-        prev_close = float(hist["Close"].iloc[-2])
-        last_price = float(hist["Close"].iloc[-1])
+    hist = ticker.history(period="7d", interval="1d")
 
-        change = last_price - prev_close
-        percent = (change / prev_close) * 100
+    candles = []
+    for _, r in hist.iterrows():
+        candles.append({
+            "o": round(float(r["Open"]), 2),
+            "h": round(float(r["High"]), 2),
+            "l": round(float(r["Low"]), 2),
+            "c": round(float(r["Close"]), 2)
+        })
 
-        return {
-            "price": round(last_price, 2),
-            "change": round(change, 2),
-            "percent": round(percent, 2),
-            "source": "yfinance"
-        }
+    cached_candles = candles
+    last_candle_fetch = now
 
-    except Exception as e:
-        return {
-            "error": "Fetch failed",
-            "details": str(e),
-            "source": "yfinance"
-        }
+    return {"candles": candles}
