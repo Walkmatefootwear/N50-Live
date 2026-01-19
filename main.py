@@ -23,22 +23,24 @@ def home():
 def nifty():
     try:
         ticker = yf.Ticker("^NSEI")
-        data = ticker.fast_info
 
-        price = data.get("last_price")
-        prev = data.get("previous_close")
+        # Use history instead of fast_info (more reliable)
+        hist = ticker.history(period="2d", interval="1d")
 
-        if price is None or prev is None:
+        if hist.empty or len(hist) < 2:
             return {
-                "error": "Yahoo data unavailable",
+                "error": "Insufficient data",
                 "source": "yfinance"
             }
 
-        change = price - prev
-        percent = (change / prev) * 100
+        prev_close = float(hist["Close"].iloc[-2])
+        last_price = float(hist["Close"].iloc[-1])
+
+        change = last_price - prev_close
+        percent = (change / prev_close) * 100
 
         return {
-            "price": round(price, 2),
+            "price": round(last_price, 2),
             "change": round(change, 2),
             "percent": round(percent, 2),
             "source": "yfinance"
