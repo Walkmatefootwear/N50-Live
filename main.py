@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import requests
+import yfinance as yf
 
 app = FastAPI()
 
@@ -21,42 +21,32 @@ def home():
 
 @app.get("/nifty")
 def nifty():
-    url = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5ENSEI"
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-
     try:
-        r = requests.get(url, headers=headers, timeout=10)
-        r.raise_for_status()
-        data = r.json()
+        ticker = yf.Ticker("^NSEI")
+        data = ticker.fast_info
 
-        result = data.get("quoteResponse", {}).get("result", [])
+        price = data.get("last_price")
+        prev = data.get("previous_close")
 
-        if not result:
+        if price is None or prev is None:
             return {
-                "error": "No data from Yahoo",
-                "source": "yahoo"
+                "error": "Yahoo data unavailable",
+                "source": "yfinance"
             }
 
-        q = result[0]
+        change = price - prev
+        percent = (change / prev) * 100
 
         return {
-            "price": q.get("regularMarketPrice"),
-            "change": q.get("regularMarketChange"),
-            "percent": q.get("regularMarketChangePercent"),
-            "source": "yahoo"
-        }
-
-    except requests.exceptions.RequestException as e:
-        return {
-            "error": "Request failed",
-            "details": str(e),
-            "source": "yahoo"
+            "price": round(price, 2),
+            "change": round(change, 2),
+            "percent": round(percent, 2),
+            "source": "yfinance"
         }
 
     except Exception as e:
         return {
-            "error": "Unexpected error",
-            "details": str(e)
+            "error": "Fetch failed",
+            "details": str(e),
+            "source": "yfinance"
         }
